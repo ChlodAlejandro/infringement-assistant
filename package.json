@@ -1,0 +1,35 @@
+{
+    "name": "infringement-assistant",
+    "version": "1.0.0",
+    "description": "Helps with filing copyright violations on Wikipedia:Copyright problems and tagging related pages.",
+    "main": "src/infringement-assistant.js",
+    "devDependencies": {
+        "axios": "^0.21.4",
+        "execa": "^5.1.1",
+        "form-data": "^4.0.0",
+        "git-commit-info": "^2.0.0",
+        "http-server": "^13.0.1",
+        "oojs": "^6.0.0",
+        "oojs-ui": "^0.42.0",
+        "types-mediawiki": "^1.2.0"
+    },
+    "scripts": {
+        "start": "http-server src/ -p 45000 -d -i -c-1 --cors --no-dotfiles"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/ChlodAlejandro/infringement-assistant.git"
+    },
+    "keywords": [
+        "wikipedia",
+        "wikimedia",
+        "userscript",
+        "wikipedia-userscript"
+    ],
+    "author": "Chlod Alejandro <chlod@chlod.net>",
+    "license": "Apache-2.0",
+    "bugs": {
+        "url": "https://github.com/ChlodAlejandro/infringement-assistant/issues"
+    },
+    "homepage": "https://github.com/ChlodAlejandro/infringement-assistant#readme"
+}
