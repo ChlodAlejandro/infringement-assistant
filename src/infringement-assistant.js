@@ -45,20 +45,23 @@ mw.loader.using([
 
     // =========================== HELPER FUNCTIONS ===========================
 
-    /**
-     * Gets the title of today's copyright problems page.
-     * @returns {string}
-     */
-    function getCopyrightProblemsPage() {
-        return "User:Chlod/sandbox"; // TODO: Remove after debugging
+    function getListingDate() {
         const today = new Date();
-        return `Wikipedia:Copyright problems/${
+        return `${
             today.getUTCFullYear()
         } ${
             months[today.getUTCMonth()]
         } ${
             today.getUTCDate()
-        }`
+        }`;
+    }
+
+    /**
+     * Gets the title of today's copyright problems page.
+     * @returns {string}
+     */
+    function getListingPage() {
+        return `Wikipedia:Copyright problems/${getListingDate()}`
     }
 
     /**
@@ -68,17 +71,6 @@ mw.loader.using([
     function exitBlock(event) {
         event.preventDefault();
         return event.returnValue = undefined;
-    }
-
-    /**
-     * Converts a normal error into an OO.ui.Error for ProcessDialogs.
-     * @param {Error} error A plain error object.
-     * @param {Object} config Error configuration.
-     * @param {boolean} config.recoverable Whether or not the error is recoverable.
-     * @param {boolean} config.warning Whether or not the error is a warning.
-     */
-    function errorToOO(error, config) {
-        new OO.ui.Error(error.message, config);
     }
 
     // ============================== SINGLETONS ==============================
@@ -94,22 +86,83 @@ mw.loader.using([
      * @type {mw.Api}
      */
     const api = new mw.Api();
-    const pageName = mw.config.get("wgPageName");
+    const pageName = mw.config.get("wgPageName").replace(/_/g, " ");
 
     // =========================== PROCESS FUNCTIONS ==========================
 
-    function shadowPage(options) {
+    async function shadowPage(options) {
+        let summary = `Hiding ${
+            options.fullPage ? "the page" : `/* ${options.sectionName} */`
+        } due to a suspected/complicated copyright violation (see [[${
+            getListingPage()}#${pageName}
+        ]]) ${
+            advert
+        }`;
+
         if (options.fullPage) {
-            api.postWithEditToken({
-                "action": "edit",
-                "title": pageName,
-                "prependtext": `{{subst:copyvio|url=${options.urls[0]}}`,
+            return api.postWithEditToken({
+                action: "edit",
+                title: pageName,
+                prependtext: `{{subst:copyvio|${options.fromText}|fullpage=yes}}\n`,
+                nocreate: true,
+                summary: summary
             });
-        } else if (options.sections.length > 1) {
-            api.postWithEditToken({
-                "action": "edit",
-                "title": pageName,
-                "prependtext": `{{subst:copyvio|url=${options.urls[0]}}`,
+        } else if (options.section) {
+            return api.postWithEditToken({
+                action: "edit",
+                title: pageName,
+                section: options.section,
+                prependtext: `{{subst:copyvio|${options.fromText}}}\n`,
+                appendtext: "\n{{Copyvio/bottom}}",
+                nocreate: true,
+                summary: summary
+            });
+        } else {
+            throw "Illegal state.";
+        }
+    }
+
+    async function addListing(options) {
+        const listingPage = getListingPage();
+        const pageExists = (await api.get({
+            "action": "query",
+            "titles": listingPage
+        }))["query"]["pages"]["-1"] == null;
+
+        let summary = `${
+            pageExists ? "A" : "Created page and a"
+        }dded listing for [[${
+            pageName
+        }${
+            !options.fullPage && options.sectionName ? `#${options.sectionName}|${pageName} § ${
+                options.sectionName
+            }` : ""
+        }]] ${
+            advert
+        }`;
+
+        const listingText = `\n* {{subst:article-cv|${pageName}}} from ${
+            options.fromText
+        }.${
+            options.additionalNotes ? ` ${options.additionalNotes}` : ""
+        } ~~~~`;
+
+        if (pageExists) {
+            return api.postWithEditToken({
+                action: "edit",
+                title: listingPage,
+                appendtext: listingText,
+                nocreate: true,
+                summary: summary
+            });
+        } else {
+            const listingHeader = `==== [[${listingPage}|${getListingDate()}]] ====\n`;
+            return api.postWithEditToken({
+                action: "edit",
+                title: listingPage,
+                text: `${listingHeader}${listingText}`,
+                nocreate: true,
+                summary: summary
             });
         }
     }
@@ -121,13 +174,17 @@ mw.loader.using([
 
         this.inputs = {
             fullPage: new OO.ui.CheckboxInputWidget({ selected: true }),
-            sections: new OO.ui.DropdownInputWidget({
+            section: new OO.ui.DropdownInputWidget({
                 disabled: true,
-                options: config.context["sections"].length > 0 ? config.context["sections"].map(
-                    (d) => { return { data: d.index, label: `${d.number}: ${d.line}` }; }
-                ) : null,
+                options: config.context["sections"].length > 0 ? [
+                    { data: "0", label: "0: Lead" },
+                    ...config.context["sections"].map(
+                        (d) => { return { data: d.index, label: `${d.number}: ${d.line}` }; }
+                    )
+                ] : null,
                 placeholder: "Select section to hide"
             }),
+            fromURL: new OO.ui.CheckboxInputWidget({ selected: true }),
             urls: new OO.ui.MenuTagMultiselectWidget({
                 allowArbitrary: true,
                 inputPosition: "outline",
@@ -137,10 +194,13 @@ mw.loader.using([
                     (d) => { return { data: d, label: d }; }
                 ) : null
             }),
+            rawFrom: new OO.ui.MultilineTextInputWidget({
+                autosize: true,
+                maxRows: 2
+            }),
             additionalNotes: new OO.ui.MultilineTextInputWidget({
                 autosize: true,
-                maxRows: 2,
-                classes: ["ia-additionalNotes"]
+                maxRows: 2
             })
         };
         this.fields = {
@@ -148,13 +208,24 @@ mw.loader.using([
                 align: "inline",
                 label: "Hide the entire page"
             }),
-            sections: new OO.ui.FieldLayout(this.inputs.sections, {
+            section: new OO.ui.FieldLayout(this.inputs.section, {
                 align: "top",
                 label: "Section"
             }),
+            fromURL: new OO.ui.FieldLayout(this.inputs.fromURL, {
+                $overlay: config.dialog.$overlay,
+                align: "inline",
+                label: "Use URLs for the origin",
+                help: "URLs will automatically be wrapped with brackets to shorten the external link. " +
+                    "Disabling this option will present the text as is."
+            }),
             urls: new OO.ui.FieldLayout(this.inputs.urls, {
                 align: "top",
-                label: "URL(s) to source of copied content"
+                label: "Source of copied content"
+            }),
+            rawFrom: new OO.ui.FieldLayout(this.inputs.rawFrom, {
+                align: "top",
+                label: "Source of copied content"
             }),
             additionalNotes: new OO.ui.FieldLayout(this.inputs.additionalNotes, {
                 align: "top",
@@ -162,19 +233,20 @@ mw.loader.using([
             })
         }
 
-        this.inputs.fullPage.on("change", (selected) => {
-            this.inputs.sections.setDisabled(selected);
+        this.fields.rawFrom.toggle(false);
+
+        this.inputs.fromURL.on("change", (selected) => {
+            this.fields.rawFrom.toggle(!selected);
+            this.fields.urls.toggle(selected);
         });
+
+        this.inputs.fullPage.on("change", (selected) => {
+            this.inputs.section.setDisabled(selected);
+        });
+
+        this.urls = [];
         this.inputs.urls.on("change", (items) => {
-            for (const item of items) {
-                if (!OO.ui.isSafeUrl(item.data)) {
-                    this.fields.urls.setWarnings([
-                        `"${item.data}" is not a valid URL. This will not be linked.`
-                    ]);
-                    return;
-                }
-            }
-            this.fields.urls.setWarnings([]);
+            this.urls = items.map(i => i.data);
         });
 
         for (const field of Object.values(this.fields)) {
@@ -191,10 +263,35 @@ mw.loader.using([
         submitContainer.style.textAlign = "right";
         submitContainer.appendChild(submit.$element[0]);
 
+        submit.on("click", () => {
+            config.dialog.setCompletionFunction(async () => {
+                const options = {
+                    fullPage: this.inputs.fullPage.isSelected(),
+                    additionalNotes: this.inputs.additionalNotes.getValue()
+                };
+                if (!options.fullPage) {
+                    options.section = +this.inputs.section.getValue();
+                    options.sectionName = this.inputs.section.dropdownWidget.label.replace(/^[0-9.]+: /g, "");
+                }
+                if (this.inputs.fromURL.isSelected()) {
+                    options.urls = this.urls;
+                    options.fromText = this.urls.map(u => `[${
+                        encodeURI(u)
+                    }]`).join(", ")
+                } else {
+                    options.fromText = this.inputs.rawFrom.getValue();
+                }
+                await addListing(options);
+                await shadowPage(options);
+            });
+            config.dialog.executeAction("execute");
+        });
+
         /** @var $element */
         this.$element.append(submitContainer);
     }
     OO.inheritClass(SuspectedInfringementPanel, OO.ui.TabPanelLayout);
+    // noinspection JSUnusedGlobalSymbols
     SuspectedInfringementPanel.prototype.setupTabItem = function () {
         /** @var tabItem */
         this.tabItem.setLabel("Suspected or complicated");
@@ -227,7 +324,7 @@ mw.loader.using([
 
     // noinspection JSUnusedGlobalSymbols
     InfringementAssistantDialog.prototype.getBodyHeight = function () {
-        return 425;
+        return 470;
     };
 
     InfringementAssistantDialog.prototype.initialize = function () {
@@ -243,11 +340,18 @@ mw.loader.using([
         });
 
         this.indexLayout.addTabPanels([
-            (this.suspectedPanel = new SuspectedInfringementPanel({ context: this.context }))
+            new SuspectedInfringementPanel({
+                dialog: this,
+                context: this.context
+            })
         ]);
 
         /** @var $content */
         this.$body.append(this.panelLayout.$element);
+    }
+
+    InfringementAssistantDialog.prototype.setCompletionFunction = function (process) {
+        this.completionFunction = process;
     }
 
     InfringementAssistantDialog.prototype.getSetupProcess = function (data) {
@@ -263,10 +367,11 @@ mw.loader.using([
     InfringementAssistantDialog.prototype.getActionProcess = function (action) {
         const process = InfringementAssistantDialog.super.prototype.getActionProcess.call(this, action);
 
+        if (action === "execute") {
+            process.first(this.completionFunction);
+        }
         process.next(function () {
-            if (action === "close") {
-                this.close({ action: action });
-            }
+            this.close({ action: action });
         }, this);
 
         return process;
@@ -297,11 +402,6 @@ mw.loader.using([
             else
                 OO.ui.alert(`Cannot open Infringement Assistant: ${error}`);
         });
-    }
-
-    window.InfringementAssistant = {
-        openDialog: openDialog,
-        InfringementAssistantDialog: InfringementAssistantDialog
     }
 
     if (document.getElementById("pt-ia") == null && mw.config.get("wgNamespaceNumber") >= 0) {
