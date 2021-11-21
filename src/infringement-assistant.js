@@ -1,11 +1,6 @@
 /*
  * Infringement Assistant
  *
- * This contains all the required functionality of CTE. As evident by the
- * array below, this file depends on a lot of things, so loading it is likely
- * going to be a bit tough. A loader can be used instead to optimize loading
- * times.
- *
  * More information on the userscript itself can be found at [[User:Chlod/IA]].
  */
 // <nowiki>
@@ -13,12 +8,7 @@ mw.loader.using([
     "oojs-ui-core",
     "oojs-ui-windows",
     "oojs-ui-widgets",
-    "oojs-ui.styles.icons-editing-core",
-    "oojs-ui.styles.icons-editing-advanced",
-    "oojs-ui.styles.icons-interactions",
-    "mediawiki.util",
-    "mediawiki.api",
-    "mediawiki.Title"
+    "mediawiki.api"
 ], async function() {
 
     // =============================== STYLES =================================
