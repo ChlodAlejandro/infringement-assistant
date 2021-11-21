@@ -8,7 +8,8 @@ mw.loader.using([
     "oojs-ui-core",
     "oojs-ui-windows",
     "oojs-ui-widgets",
-    "mediawiki.api"
+    "mediawiki.api",
+    "mediawiki.util"
 ], async function() {
 
     // =============================== STYLES =================================
