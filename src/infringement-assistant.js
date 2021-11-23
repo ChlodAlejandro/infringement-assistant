@@ -23,6 +23,13 @@ mw.loader.using([
 
     // ============================== CONSTANTS ===============================
 
+    /**
+     * Debug mode will redirect CP listings to Special:MyPage/sandbox/{date} and
+     * replace the copyvio template with a soft link (using {{T}}).
+     * @type {boolean}
+     */
+    const debug = true;
+
     const advert = "([[User:Chlod/IA|InfringementAssistant]])";
     /**
      * Using a fixed set of months since `mw.language.months` changes depending
@@ -52,7 +59,8 @@ mw.loader.using([
      * @returns {string}
      */
     function getListingPage() {
-        return `Wikipedia:Copyright problems/${getListingDate()}`
+        return (debug ? `User:${mw.config.get("wgUserName")}/sandbox/` : "Wikipedia:Copyright problems/")
+            + getListingDate();
     }
 
     /**
@@ -85,8 +93,8 @@ mw.loader.using([
         let summary = `Hiding ${
             options.fullPage ? "the page" : `/* ${options.sectionName} */`
         } due to a suspected/complicated copyright violation (see [[${
-            getListingPage()}#${pageName}
-        ]]) ${
+            getListingPage()}#${pageName
+        }]]) ${
             advert
         }`;
 
@@ -94,7 +102,7 @@ mw.loader.using([
             return api.postWithEditToken({
                 action: "edit",
                 title: pageName,
-                prependtext: `{{subst:copyvio|${options.fromText}|fullpage=yes}}\n`,
+                prependtext: `{{${debug ? "T|" : ""}subst:copyvio|${options.fromText}|fullpage=yes}}\n`,
                 nocreate: true,
                 summary: summary
             });
@@ -103,8 +111,8 @@ mw.loader.using([
                 action: "edit",
                 title: pageName,
                 section: options.section,
-                prependtext: `{{subst:copyvio|${options.fromText}}}\n`,
-                appendtext: "\n{{Copyvio/bottom}}",
+                prependtext: `{{${debug ? "T|" : ""}subst:copyvio|${options.fromText}}}\n`,
+                appendtext: `\n{{${debug ? "T|" : ""}Copyvio/bottom}}`,
                 nocreate: true,
                 summary: summary
             });
@@ -143,7 +151,7 @@ mw.loader.using([
                 action: "edit",
                 title: listingPage,
                 appendtext: listingText,
-                nocreate: true,
+                recreate: true,
                 summary: summary
             });
         } else {
@@ -152,7 +160,7 @@ mw.loader.using([
                 action: "edit",
                 title: listingPage,
                 text: `${listingHeader}${listingText}`,
-                nocreate: true,
+                recreate: true,
                 summary: summary
             });
         }
@@ -255,25 +263,25 @@ mw.loader.using([
         submitContainer.appendChild(submit.$element[0]);
 
         submit.on("click", () => {
+            const panel = this;
             config.dialog.setCompletionFunction(async () => {
                 const options = {
-                    fullPage: this.inputs.fullPage.isSelected(),
-                    additionalNotes: this.inputs.additionalNotes.getValue()
+                    fullPage: panel.inputs.fullPage.isSelected(),
+                    additionalNotes: panel.inputs.additionalNotes.getValue()
                 };
                 if (!options.fullPage) {
-                    options.section = +this.inputs.section.getValue();
-                    options.sectionName = this.inputs.section.dropdownWidget.label.replace(/^[0-9.]+: /g, "");
+                    options.section = +panel.inputs.section.getValue();
+                    options.sectionName = panel.inputs.section.dropdownWidget.label.replace(/^[0-9.]+: /g, "");
                 }
-                if (this.inputs.fromURL.isSelected()) {
-                    options.urls = this.urls;
-                    options.fromText = this.urls.map(u => `[${
+                if (panel.inputs.fromURL.isSelected()) {
+                    options.urls = panel.urls;
+                    options.fromText = panel.urls.map(u => `[${
                         encodeURI(u)
                     }]`).join(", ")
                 } else {
-                    options.fromText = this.inputs.rawFrom.getValue();
+                    options.fromText = panel.inputs.rawFrom.getValue();
                 }
-                await addListing(options);
-                await shadowPage(options);
+                return addListing(options).then(() => shadowPage(options));
             });
             config.dialog.executeAction("execute");
         });
@@ -409,6 +417,10 @@ mw.loader.using([
     // Query parameter-based autostart
     if (/[?&]ia-autostart(=(1|yes|true|on)?(&|$)|$)/.test(window.location.search)) {
         openDialog();
+    }
+
+    if (debug) {
+        mw.notify("Debug mode has been enabled.", { title: "Infringement Assistant" });
     }
 
     document.dispatchEvent(new Event("ia:load"));
